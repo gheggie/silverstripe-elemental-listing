@@ -4,10 +4,11 @@ namespace Heggsta\ElementalListing\Elements;
 
 use \Page;
 use DNADesign\Elemental\Models\BaseElement;
-use Heggsta\Controllers\ElementListingController;
+use Heggsta\ElementalListing\Controllers\ElementListingController;
 use SilverStripe\Control\Controller;
 use SilverStripe\Core\Config\Config;
 use SilverStripe\Core\ClassInfo;
+use SilverStripe\Core\Path;
 use SilverStripe\Forms\CheckboxField;
 use SilverStripe\Forms\DropdownField;
 use SilverStripe\Forms\FormField;
@@ -30,6 +31,8 @@ use Symbiote\MultiValueField\ORM\FieldType\MultiValueField;
  */
 class ElementListing extends BaseElement
 {
+    CONST LISTING_TEMPLATES_PATH = 'Heggsta\\ElementalListing\\ListingTemplates';
+
     private static $table_name = 'Heggsta_ElementListing';
 
     private static $description = 'Listing element class';
@@ -174,6 +177,9 @@ PAGING;
             );
         }
 
+        $fields->removeByName('ListingTemplateFile');
+        $fields->removeByName('ComponentListingTemplateFile');
+
         $templatesTab = $fields->findOrMakeTab('Root.Templates');
         $templatesTab->setTitle(_t(__CLASS__.'.TEMPLATES', 'Templates'));
 
@@ -264,7 +270,7 @@ PAGING;
             }
 
             $fields->addFieldToTab(
-                'Root.AdvancedSettings',
+                'Root.Advanced',
                 DropdownField::create(
                     'ComponentFilterName', 
                     _t(__CLASS__.'.COMPONENTFILTERNAME', 'Filter by relation'), 
@@ -274,7 +280,7 @@ PAGING;
                 ->setDescription('Will cause this page to list items based on the last URL part. (i.e. ' . $this->AbsoluteLink() . '{$componentFieldName})')
             );
             $fields->addFieldToTab(
-                'Root.AdvancedSettings', 
+                'Root.Advanced', 
                 $componentColumnField = DropdownField::create(
                     'ComponentFilterColumn', 
                     _t(__CLASS__.'FILTERBYRELATIONFIELD', 'Filter by relation field')
@@ -298,7 +304,7 @@ PAGING;
 
                     if (class_exists('KeyValueField')) {
                         $fields->addFieldToTab(
-                            'Root.AdvancedSettings',
+                            'Root.Advanced',
                             KeyValueField::create(
                                 'ComponentFilterWhere', 
                                 _t(__CLASS__.'.COMPONENTFILTERWHERE', 'Constrain relation by'), 
@@ -454,7 +460,7 @@ PAGING;
      *
      * @return SS_List
      */
-    public function ListingItems()
+    public function getListingItems()
     {
         // need to get the items being listed
         $source = $this->getListingSource();
@@ -587,17 +593,18 @@ PAGING;
             return $map;
         }
 
-        foreach (self::config()->file_template_sources as $relPath) {
-            $absPath = Path::join(BASE_PATH, $relPath);
+        foreach (self::config()->file_template_sources as $source) {
+
+            $absPath = Path::join(BASE_PATH, $source, 'templates', self::LISTING_TEMPLATES_PATH);
             if (file_exists($absPath) && is_dir($absPath)) {
                 $candidates = glob($absPath . DIRECTORY_SEPARATOR . "*.ss");
                 if ($candidates) {
                     foreach ($candidates as $file) {
                         if (substr($file, -3) == '.ss') {
-                            $name = str_replace($absPath, '', $file);
-                            $name = ltrim($name, '\\');
+                            $name = str_replace($absPath . DIRECTORY_SEPARATOR, '', $file);
                             $name = substr($name, 0, strlen($name) - 3);
-                            $map[$file] = $name;
+                            $key = Path::join(self::LISTING_TEMPLATES_PATH, $name);
+                            $map[$key] = $name;
                         }
                     }
                 }
@@ -629,7 +636,9 @@ PAGING;
             }
         }
 
-        $data = $this->customise(['Items' => $items]);
+        $data = $this->customise(
+            ['Items' => $items]
+        );
 
         if ($view) {
             return $view->process($data);
