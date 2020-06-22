@@ -4,26 +4,26 @@ namespace Heggsta\ElementalListing\Elements;
 
 use \Page;
 use DNADesign\Elemental\Models\BaseElement;
-use HoltMedical\Controllers\ElementListingController;
+use Heggsta\Controllers\ElementListingController;
+use SilverStripe\Control\Controller;
 use SilverStripe\Core\Config\Config;
 use SilverStripe\Core\ClassInfo;
-use SilverStripe\Forms\HTMLEditor\HtmlEditorField;
+use SilverStripe\Forms\CheckboxField;
 use SilverStripe\Forms\DropdownField;
+use SilverStripe\Forms\FormField;
+use SilverStripe\Forms\HTMLEditor\HtmlEditorField;
 use SilverStripe\Forms\LiteralField;
 use SilverStripe\Forms\NumericField;
-use SilverStripe\Forms\CheckboxField;
-use SilverStripe\Forms\TreeDropdownField;
-use SilverStripe\Forms\TextField;
 use SilverStripe\Forms\TextareaField;
-use SilverStripe\Forms\FormField;
-use Symbiote\MultiValueField\Fields\KeyValueField;
-use Symbiote\MultiValueField\ORM\FieldType\MultiValueField;
-use SilverStripe\Control\Controller;
-use SilverStripe\ORM\DataObject;
+use SilverStripe\Forms\TextField;
+use SilverStripe\Forms\TreeDropdownField;
 use SilverStripe\ORM\DataList;
+use SilverStripe\ORM\DataObject;
 use SilverStripe\ORM\ArrayList;
 use SilverStripe\ORM\PaginatedList;
 use SilverStripe\View\SSViewer;
+use Symbiote\MultiValueField\Fields\KeyValueField;
+use Symbiote\MultiValueField\ORM\FieldType\MultiValueField;
 
 /**
  * An element that can be configured to list content from other sources
@@ -44,13 +44,13 @@ class ElementListing extends BaseElement
         'Depth'                     => 'Int',
         'StrictType'                => 'Boolean',
         'AllowDrilldown'            => 'Boolean',
-        //'ContentType'               => 'Varchar',
-        //'CustomContentType'         => 'Varchar',
         'ComponentFilterName'       => 'Varchar(64)',
         'ComponentFilterColumn'     => 'Varchar(64)',
         'ComponentFilterWhere'      => MultiValueField::class,
         'ListingTemplate'           => 'Text',
-        'ComponentListingTemplate'  => 'Text'
+        'ComponentListingTemplate'  => 'Text',
+        'ListingTemplateFile'       => 'Varchar',
+        'ComponentListingTemplateFile' => 'Varchar'
     );
 
     private static $defaults = [
@@ -76,6 +76,22 @@ class ElementListing extends BaseElement
      */
     private static $controller_class = ElementListingController::class;
 
+    /**
+     * @var string File system directory paths, relative to the project root
+     * 
+     * These directories should contain .ss template files, from which a user can
+     * select one to render the listing.
+     */
+    private static $file_template_sources = [];
+
+    /**
+     * @var string
+     */
+    private static $cms_templates_disabled = false;
+
+    /**
+     * @var string
+     */
     private static $template_sample_pagination = <<<PAGING
 <% if \$Items.MoreThanOnePage %>
 \t<ul>
@@ -102,6 +118,8 @@ PAGING;
         'Listing' => 'HTMLText'
     ];
 
+    private $customTemplates = true;
+
     public function getCMSFields()
     {
         $fields = parent::getCMSFields();
@@ -112,7 +130,7 @@ PAGING;
         $source = array_combine($types, $types);
         asort($source);
 
-        $sourceType = $this->effectiveSourceType();
+        $sourceType = $this->getEffectiveSourceType();
         $parentType = $this->parentType($sourceType);
 
         $fields->addFieldsToTab(
@@ -156,36 +174,67 @@ PAGING;
             );
         }
 
-        $fields->addFieldsToTab(
-            'Root.Template',
-            [
-                TextareaField::create(
-                    'ListingTemplate', 
-                    _t(__CLASS__.'.LISTINGTEMPLATE', 'Listing template')
-                )->setRows(15),
-                TextareaField::create(
-                    'ComponentListingTemplate', 
-                    _t(__CLASS__.'COMPONENTLISTINGTEMPLATE', 'Component listing template')
-                )->setRows(15)
-            ]
-        );
+        $templatesTab = $fields->findOrMakeTab('Root.Templates');
+        $templatesTab->setTitle(_t(__CLASS__.'.TEMPLATES', 'Templates'));
 
-        if (self::config()->template_sample_pagination) {
-            $fields->insertAfter(
-                'ComponentListingTemplate',
-                TextareaField::create(
-                    'TemplateSamplePagination', 
-                    _t(__CLASS__.'.SAMPLETEMPLATEPAGINATION', 'Sample template pagination'), 
-                    self::config()->template_sample_pagination
-                )->setRows(15)->setReadonly(true)
-            );
+        $templateFiles = self::get_listing_template_files();
+
+        if (self::config()->cms_templates_disabled && !$templateFiles) {
+            $templatesTab->push(LiteralField::create('', '<p class="message bad">No templates available.</p>'));
+        } else {
+
+            // Selectors for file templates
+            if ($templateFiles) {
+                $fields->addFieldsToTab(
+                    'Root.Templates',
+                    [
+                        DropdownField::create(
+                            'ListingTemplateFile', 
+                            'Listing template file', 
+                            $templateFiles
+                        )->setEmptyString('Select...'),
+                        DropdownField::create(
+                            'ComponentListingTemplateFile', 
+                            'Component listing template file', 
+                            $templateFiles
+                        )->setEmptyString('Select...')
+                    ]
+                );
+            }
+
+            // Fields for editable templates
+            if (!self::config()->cms_templates_disabled) {
+                $fields->addFieldsToTab(
+                    'Root.Templates',
+                    [
+                        TextareaField::create(
+                            'ListingTemplate', 
+                            _t(__CLASS__.'.LISTINGTEMPLATE', 'Listing template')
+                        )->setRows(15),
+                        TextareaField::create(
+                            'ComponentListingTemplate', 
+                            _t(__CLASS__.'COMPONENTLISTINGTEMPLATE', 'Component listing template')
+                        )->setRows(15)
+                    ]
+                );
+                if (self::config()->template_sample_pagination) {
+                    $fields->insertAfter(
+                        'ComponentListingTemplate',
+                        TextareaField::create(
+                            'TemplateSamplePagination', 
+                            _t(__CLASS__.'.SAMPLETEMPLATEPAGINATION', 'Sample template pagination'), 
+                            self::config()->template_sample_pagination
+                        )->setRows(15)->setReadonly(true)
+                    );
+                }
+            }
         }
 
-        $advancedSettingsTab = $fields->findOrMakeTab('Root.AdvancedSettings');
+        $advancedSettingsTab = $fields->findOrMakeTab('Root.Advanced');
         $advancedSettingsTab->setTitle(_t(__CLASS__.'.ADVANCEDSETTINGS', 'Advanced settings'));
 
         $fields->addFieldsToTab(
-            'Root.AdvancedSettings',
+            'Root.Advanced',
             [
                 TextField::create(
                     'CustomSort', 
@@ -264,11 +313,17 @@ PAGING;
         return $fields;
     }
 
+    /**
+     * @return string
+     */
     public function getType()
     {
         return _t(__CLASS__ . '.BlockType', 'Listing');
     }
 
+    /**
+     * @return array
+     */
     protected function provideBlockSchema()
     {
         $blockSchema = parent::provideBlockSchema();
@@ -285,12 +340,29 @@ PAGING;
         return $blockSchema;
     }
 
+    /**
+     * @return string|null
+     */
     protected function parentType($type)
     {
         $has_one = Config::inst()->get($type, 'has_one');
         return isset($has_one['Parent']) ? $has_one['Parent'] : null;
     }
 
+    /**
+     * Enable/disable fields for editable listing templates in the CMS
+     * 
+     * @param $val bool
+     */
+    public function setCustomTemplates($val)
+    {
+        $this->customTemplates = $val;
+        return $this;
+    }
+
+    /**
+     * @return array
+     */
     protected function getSelectableFields($listType)
     {
         $objFields = static::getSchema()->fieldSpecs($listType);
@@ -308,7 +380,7 @@ PAGING;
      */
     protected function getListingSource()
     {
-        $sourceType = $this->effectiveSourceType();
+        $sourceType = $this->getEffectiveSourceType();
         if (!($sourceType && $this->ListingSourceID)) {
             return;
         }
@@ -324,11 +396,6 @@ PAGING;
             /* @var $source DataObject */
             $newParent = $sourceType::get()->byId($newParentId);
             if ($newParent) {
-                // Figure out whether it's within the source already configured there by looking up through the
-                // tree until we find the listing source ID parent, at which point we can
-                // safely swap to it
-                //
-                // - nyeholt 2017-12-18
                 $parentCheck = $newParent;
                 while ($parentCheck) {
                     if ($parentCheck->ID == $source->ID) {
@@ -352,7 +419,7 @@ PAGING;
      *
      * @return string
      */
-    protected function effectiveSourceType()
+    protected function getEffectiveSourceType()
     {
         $listType = $this->ListType ? $this->ListType : Page::class;
         $listType = isset($this->config()->listing_type_source_map[$listType]) 
@@ -366,7 +433,7 @@ PAGING;
      *
      * @return ArrayList
      */
-    public function ComponentListingItems()
+    public function getComponentListingItems()
     {
         $manyMany = singleton($this->ListType)->config()->many_many;
         $tagClass = isset($manyMany[$this->ComponentFilterName]) ? $manyMany[$this->ComponentFilterName] : '';
@@ -423,14 +490,12 @@ PAGING;
 
         // Bind these variables into the current page object because the
         // template may want to read them out after.
-        //
         // - nyeholt 2017-12-19
         $this->CurrentSort = $sort;
         $this->CurrentDir = $sortDir;
         $this->CurrentSource = $source;
         $this->CurrentLink = $request ? $request->getURL() : $this->Link();
 
-        // $sort = $this->CustomSort ? $this->CustomSort : $sort;
         $sort .= ' ' . $sortDir;
         $limit = '';
         $pageUrlVar = 'page' . $this->ID;
@@ -446,7 +511,7 @@ PAGING;
             if ($controller) {
                 $tagName = urldecode($controller->getRequest()->latestParam('Action'));
                 if ($tagName) {
-                    $tags = $this->ComponentListingItems();
+                    $tags = $this->getComponentListingItems();
                     $tags = $tags->filter([
                         $this->ComponentFilterColumn => $tagName
                     ]);
@@ -472,15 +537,16 @@ PAGING;
 
         $this->extend('updateListingItems', $items);
 
-        $list = ArrayList::create();
-        if ($items) {
-            $list = PaginatedList::create($items);
-            // ensure the 0 limit is applied if configured as such
-            $list->setPageLength($this->PerPage);
-            $list->setPaginationGetVar($pageUrlVar);
-            if ($items instanceof DataList) {
-                $list->setPaginationFromQuery($items->dataQuery()->query());
-            }
+        if (!$items) {
+            return ArrayList::create();
+        }
+
+        $list = PaginatedList::create($items);
+        // ensure the 0 limit is applied if configured as such
+        $list->setPageLength($this->PerPage);
+        $list->setPaginationGetVar($pageUrlVar);
+        if ($items instanceof DataList) {
+            $list->setPaginationFromQuery($items->dataQuery()->query());
         }
 
         return $list;
@@ -491,6 +557,7 @@ PAGING;
      *
      * @param DataObject $parent
      * @param int        $depth
+     * @return array     Array of IDs
      */
     protected function getIdsFrom($parent, $depth)
     {
@@ -509,22 +576,75 @@ PAGING;
     }
 
     /**
+     * Get a list of templates to use 
+     * 
+     * @return array
+     */
+    public static function get_listing_template_files()
+    {
+        $map = [];
+        if (!self::config()->file_template_sources) {
+            return $map;
+        }
+
+        foreach (self::config()->file_template_sources as $relPath) {
+            $absPath = Path::join(BASE_PATH, $relPath);
+            if (file_exists($absPath) && is_dir($absPath)) {
+                $candidates = glob($absPath . DIRECTORY_SEPARATOR . "*.ss");
+                if ($candidates) {
+                    foreach ($candidates as $file) {
+                        if (substr($file, -3) == '.ss') {
+                            $name = str_replace($absPath, '', $file);
+                            $name = ltrim($name, '\\');
+                            $name = substr($name, 0, strlen($name) - 3);
+                            $map[$file] = $name;
+                        }
+                    }
+                }
+            }
+        }
+
+        return $map;
+    }
+
+    /**
      * @return string
      */
-    public function getListing($action = false)
+    public function getListing()
     {
-        if ($action === false) {
-            $action = $this->getController()->getActionParam();
-        }
-        if ($this->ComponentFilterName && !$action) {
-            // For a list of relations like tags/categories/etc
-            $items = $this->ComponentListingItems();
-            $view = SSViewer::fromString($this->ComponentListingTemplate);
+        $view = null;
+
+        if ($this->isComponentListing()) {
+            // For a list of relations like tags, categories etc
+            $items = $this->getComponentListingItems();
+            $file = $this->ComponentListingTemplateFile;
+            if ($this->ComponentListingTemplate) {
+                $view = SSViewer::fromString($this->ComponentListingTemplate);
+            }
         } else {
-            $items = $this->ListingItems();
-            $view = SSViewer::fromString($this->ListingTemplate);
+            $items = $this->getListingItems();
+            $file = $this->ListingTemplateFile;
+            if ($this->ListingTemplate) {
+                $view = SSViewer::fromString($this->ListingTemplate);
+            }
         }
+
         $data = $this->customise(['Items' => $items]);
-        return $view->process($data);
+
+        if ($view) {
+            return $view->process($data);
+        } elseif ($file) {
+            return $data->renderWith($file);
+        }
+
+        return '';
+    }
+
+    /**
+     * @return bool
+     */
+    public function isComponentListing()
+    {
+        return $this->ComponentFilterName && !$this->getController()->getActionParam();
     }
 }

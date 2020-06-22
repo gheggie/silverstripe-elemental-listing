@@ -1,16 +1,20 @@
 {
-    "name": "gheggie/silverstripe-elemental-listing",
+    "name": "heggsta/silverstripe-elemental-listing",
     "description": "A listing element for the silverstripe-elemental module",
     "type": "silverstripe-vendormodule",
     "keywords": [
         "silverstripe",
         "elemental",
-        "content blocks",
-        "listing"
+        "listing",
+        "content blocks"
     ],
     "license": "BSD-3-Clause",
-    "minimum-stability": "dev",
-    "prefer-stable": true,
+    "authors": [
+        {
+            "name": "Grant Heggie",
+            "email": "grant@grantheggie.com"
+        }
+    ],
     "require": {
         "silverstripe/vendor-plugin": "^1.0",
         "silverstripe/cms": "^4.3",
@@ -30,5 +34,7 @@
         "psr-4": {
             "Heggsta\\ElementalListing\\": "src/"
         }
-    }
+    },
+    "minimum-stability": "dev",
+    "prefer-stable": true
 }
