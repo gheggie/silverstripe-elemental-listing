@@ -1,5 +1,10 @@
 <?php
 
+/**
+ * @package silverstripe-elemental-listing
+ * @author Grant Heggie <grant@grantheggie.com>
+ * @link https://github.com/gheggie/silverstripe-elemental-listing
+ */
 namespace Heggsta\ElementalListing\Elements;
 
 use \Page;
@@ -80,15 +85,17 @@ class ElementListing extends BaseElement
     private static $controller_class = ElementListingController::class;
 
     /**
-     * @var string File system directory paths, relative to the project root
+     * File system directory paths, relative to the project root.
      * 
      * These directories should contain .ss template files, from which a user can
      * select one to render the listing.
+     * 
+     * @var string 
      */
     private static $file_template_sources = [];
 
     /**
-     * @var string
+     * @var bool
      */
     private static $cms_templates_disabled = false;
 
@@ -186,7 +193,13 @@ PAGING;
         $templateFiles = self::get_listing_template_files();
 
         if (self::config()->cms_templates_disabled && !$templateFiles) {
-            $templatesTab->push(LiteralField::create('', '<p class="message bad">No templates available.</p>'));
+            $msg = _t(__CLASS__.'.NOTEMPLATES', 'No templates available.');
+            $templatesTab->push(
+                LiteralField::create(
+                    '', 
+                    "<p class=\"message bad\">$msg</p>"
+                )
+            );
         } else {
 
             // Selectors for file templates
@@ -292,26 +305,21 @@ PAGING;
                     ? $componentsManyMany[$this->ComponentFilterName] 
                     : '';
                 if ($componentClass) {
-                    $componentFields = array();
+                    $componentFields = [];
                     foreach ($this->getSelectableFields($componentClass) as $columnName => $type) {
                         $componentFields[$columnName] = $columnName;
                     }
                     $componentColumnField->setSource($componentFields);
                     $componentColumnField->setEmptyString(_t(__CLASS__.'.SELECTEMPTY', 'Select...'));
 
-                    $componentListingField->setSource($templates);
-                    $componentListingField->setHasEmptyDefault(false);
-
-                    if (class_exists('KeyValueField')) {
-                        $fields->addFieldToTab(
-                            'Root.Advanced',
-                            KeyValueField::create(
-                                'ComponentFilterWhere', 
-                                _t(__CLASS__.'.COMPONENTFILTERWHERE', 'Constrain relation by'), 
-                                $componentFields
-                            )->setDescription("Filter '{$this->ComponentFilterName}' with these properties.")
-                        );
-                    }
+                    $fields->addFieldToTab(
+                        'Root.Advanced',
+                        KeyValueField::create(
+                            'ComponentFilterWhere', 
+                            _t(__CLASS__.'.COMPONENTFILTERWHERE', 'Constrain relation by'), 
+                            $componentFields
+                        )->setDescription("Filter '{$this->ComponentFilterName}' with these properties.")
+                    );
                 }
             }
         }
