@@ -13,6 +13,7 @@ use Heggsta\ElementalListing\Controllers\ElementListingController;
 use SilverStripe\Control\Controller;
 use SilverStripe\Core\Config\Config;
 use SilverStripe\Core\ClassInfo;
+use SilverStripe\Core\Injector\Injector;
 use SilverStripe\Core\Path;
 use SilverStripe\Forms\CheckboxField;
 use SilverStripe\Forms\DropdownField;
@@ -267,11 +268,11 @@ PAGING;
         );
 
         if ($this->ListType) {
-            $componentsManyMany = singleton($this->ListType)->config()->many_many;
+            $componentsManyMany = Injector::inst()->get($this->ListType)->config()->many_many;
             if (!is_array($componentsManyMany)) {
-                $componentsManyMany = array();
+                $componentsManyMany = [];
             }
-            $componentNames = array();
+            $componentNames = [];
             foreach ($componentsManyMany as $componentName => $componentVal) {
                 $componentClass = '';
                 if (is_string($componentVal)) {
@@ -449,8 +450,10 @@ PAGING;
      */
     public function getComponentListingItems()
     {
-        $manyMany = singleton($this->ListType)->config()->many_many;
-        $tagClass = isset($manyMany[$this->ComponentFilterName]) ? $manyMany[$this->ComponentFilterName] : '';
+        $manyMany = Injector::inst()->get($this->ListType)->config()->many_many;
+        $tagClass = isset($manyMany[$this->ComponentFilterName]) 
+            ? $manyMany[$this->ComponentFilterName] 
+            : '';
         if (!$tagClass) {
             return ArrayList::create();
         }
@@ -470,7 +473,7 @@ PAGING;
      */
     public function getListingItems()
     {
-        // need to get the items being listed
+        $request = Controller::has_curr() ? Controller::curr()->getRequest() : null;
         $source = $this->getListingSource();
         $listType = $this->ListType ? $this->ListType : 'Page';
         $filter = [];
@@ -491,7 +494,6 @@ PAGING;
 
         $sortDir = $this->SortDir == 'Ascending' ? 'ASC' : 'DESC';
         $sort = $this->SortBy && isset($objFields[$this->SortBy]) ? $this->SortBy : 'Title';
-        $request = Controller::has_curr() ? Controller::curr()->getRequest() : null;
 
         if (strlen($this->CustomSort) && $request) {
             $sortField = $request->getVar($this->CustomSort);
